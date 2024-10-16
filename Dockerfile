@@ -1,5 +1,4 @@
 FROM sagemath/sagemath:latest
-
 RUN sudo apt-get update && sudo apt-get install -y tzdata  # avoid select timezone
 RUN sudo apt-get update && sudo apt-get upgrade -y
 
@@ -25,26 +24,28 @@ RUN sudo apt-get update \
 
 USER sage
 
-RUN sage --pip install pycryptodome pwntools tqdm
-
+RUN sage --pip install --no-cache-dir \
+    pwntools \
+    pycryptodome \
+    z3-solver \
+    tqdm
 
 RUN mkdir /home/sage/coppersmith
 COPY --chown=sage:sage *.py /home/sage/coppersmith/
-COPY --chown=sage:sage fplll /home/sage/coppersmith/fplll/
-COPY --chown=sage:sage flatter /home/sage/coppersmith/flatter/
 
 #fplll
-WORKDIR /home/sage/coppersmith/fplll
-RUN ./autogen.sh
-RUN ./configure
-RUN make -j4
+RUN sudo apt-get -y install aptitude
+RUN sudo aptitude install fplll-tools
 
 #flatter
-WORKDIR /home/sage/coppersmith/flatter
-RUN mkdir build
-WORKDIR /home/sage/coppersmith/flatter/build
-RUN cmake ..
-RUN make -j4
+USER root
+RUN git clone https://github.com/keeganryan/flatter.git \
+    && cd flatter \ 
+    && mkdir build && cd ./build \
+    && cmake .. \
+    && make \
+    && make install \
+    && ldconfig
 
 WORKDIR /home/sage/
 
@@ -74,7 +75,7 @@ ENV PYTHONPATH=/home/sage/collection_lattice_tools/crypto_attacks/:$PYTHONPATH
 # rkm0959/Inequality_Solving_with_CVP
 RUN git clone https://github.com/rkm0959/Inequality_Solving_with_CVP
 RUN ln -s /home/sage/collection_lattice_tools/Inequality_Solving_with_CVP/solver.sage /home/sage/collection_lattice_tools/inequ_cvp_solve.sage
-## load("/home/sage/collection_lattice_tools/inequ_cvp_solve.sage
+## load("/home/sage/collection_lattice_tools/inequ_cvp_solve.sage")
 
 # nneonneo/pwn-stuff (including math/solvelinmod.py)
 RUN git clone https://github.com/nneonneo/pwn-stuff
@@ -82,5 +83,22 @@ RUN ln -s /home/sage/collection_lattice_tools/pwn-stuff/math/solvelinmod.py /hom
 
 WORKDIR /home/sage
 
+RUN mkdir -p /home/sage/ctf-challenges
+VOLUME [ "/home/sage/ctf-challenges" ]
 
-CMD ["/home/sage/sage/sage", "--python", "coppersmith/example.py"]
+ENV PWNLIB_NOTERM=true
+
+ENV BLUE='\033[0;34m'
+ENV YELLOW='\033[1;33m'
+ENV RED='\e[91m'
+ENV NOCOLOR='\033[0m'
+
+ENV BANNER=" \n\
+${BLUE}----------------------------------${NOCOLOR} \n\
+${YELLOW}CryptoHack Docker Container${NOCOLOR} \n\
+\n\
+${RED}After Jupyter starts, visit http://127.0.0.1:8888${NOCOLOR} \n\
+${BLUE}----------------------------------${NOCOLOR} \n\
+"
+
+CMD ["echo -e $BANNER && sage -n jupyter --NotebookApp.token='' --no-browser --ip='0.0.0.0' --port=8888 --allow-root"]
